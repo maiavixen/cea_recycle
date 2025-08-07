@@ -2,7 +2,11 @@ import 'package:flutter/cupertino.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:sensors_plus/sensors_plus.dart';
+import 'package:geolocator/geolocator.dart';
 import 'dart:io';
+import 'dart:async';
+import 'dart:math';
 import 'recycling_data.dart';
 
 void main() => runApp(const MyApp());
@@ -36,6 +40,10 @@ class MainTabView extends StatelessWidget {
             icon: FaIcon(FontAwesomeIcons.camera, size: 20),
             label: 'Photo',
           ),
+          BottomNavigationBarItem(
+            icon: FaIcon(FontAwesomeIcons.mobileScreen, size: 20),
+            label: 'Sensors',
+          ),
         ],
       ),
       tabBuilder: (context, index) {
@@ -46,6 +54,8 @@ class MainTabView extends StatelessWidget {
             return const MaterialListScreen();
           case 2:
             return const PhotoCaptureScreen();
+          case 3:
+            return const SensorScreen();
           default:
             return const DistrictListScreen();
         }
@@ -687,4 +697,409 @@ List<MaterialInfo> _getAllMaterials() {
   }
 
   return materials.values.toList()..sort((a, b) => a.name.compareTo(b.name));
+}
+
+class SensorScreen extends StatefulWidget {
+  const SensorScreen({super.key});
+
+  @override
+  State<SensorScreen> createState() => _SensorScreenState();
+}
+
+class _SensorScreenState extends State<SensorScreen> {
+  double _accelerometerX = 0.0;
+  double _accelerometerY = 0.0;
+  double _accelerometerZ = 0.0;
+  double _gyroscopeX = 0.0;
+  double _gyroscopeY = 0.0;
+  double _gyroscopeZ = 0.0;
+  Position? _position;
+  String _locationStatus = 'Unknown';
+
+  int _tapCount = 0;
+  int _longPressCount = 0;
+  int _swipeCount = 0;
+  String _lastGesture = 'None';
+  Offset? _panStart;
+  double _totalPanDistance = 0.0;
+  double _shakeThreshold = 12.0;
+  bool _isShaking = false;
+
+  // Stream subscriptions
+  late StreamSubscription<AccelerometerEvent> _accelerometerSubscription;
+  late StreamSubscription<GyroscopeEvent> _gyroscopeSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeSensors();
+    _getCurrentLocation();
+  }
+
+  void _initializeSensors() {
+    _accelerometerSubscription = accelerometerEvents.listen((
+      AccelerometerEvent event,
+    ) {
+      setState(() {
+        _accelerometerX = event.x;
+        _accelerometerY = event.y;
+        _accelerometerZ = event.z;
+
+        double magnitude = sqrt(
+          event.x * event.x + event.y * event.y + event.z * event.z,
+        );
+        if (magnitude > _shakeThreshold && !_isShaking) {
+          _isShaking = true;
+          _lastGesture = 'Shake detected!';
+          // Reset shake detection after 1 second
+          Timer(const Duration(seconds: 1), () {
+            _isShaking = false;
+          });
+        }
+      });
+    });
+
+    _gyroscopeSubscription = gyroscopeEvents.listen((GyroscopeEvent event) {
+      setState(() {
+        _gyroscopeX = event.x;
+        _gyroscopeY = event.y;
+        _gyroscopeZ = event.z;
+      });
+    });
+  }
+
+  Future<void> _getCurrentLocation() async {
+    try {
+      // Check if location services are enabled
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        setState(() {
+          _locationStatus = 'Location services disabled';
+        });
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          setState(() {
+            _locationStatus = 'Permission denied';
+          });
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        setState(() {
+          _locationStatus = 'Permission denied permanently';
+        });
+        return;
+      }
+
+      if (permission == LocationPermission.whileInUse ||
+          permission == LocationPermission.always) {
+        setState(() {
+          _locationStatus = 'Getting location...';
+        });
+
+        Position position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+          timeLimit: const Duration(seconds: 10),
+        );
+        setState(() {
+          _position = position;
+          _locationStatus = 'Location acquired';
+        });
+      } else {
+        setState(() {
+          _locationStatus = 'Permission denied';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _locationStatus = 'Error: ${e.toString()}';
+      });
+    }
+  }
+
+  void _handleTap() {
+    setState(() {
+      _tapCount++;
+      _lastGesture = 'Tap';
+    });
+  }
+
+  void _handleLongPress() {
+    setState(() {
+      _longPressCount++;
+      _lastGesture = 'Long Press';
+    });
+  }
+
+  void _handlePanStart(DragStartDetails details) {
+    _panStart = details.globalPosition;
+  }
+
+  void _handlePanUpdate(DragUpdateDetails details) {
+    if (_panStart != null) {
+      double distance = (details.globalPosition - _panStart!).distance;
+      setState(() {
+        _totalPanDistance += distance;
+      });
+    }
+    _panStart = details.globalPosition;
+  }
+
+  void _handlePanEnd(DragEndDetails details) {
+    setState(() {
+      _swipeCount++;
+      _lastGesture = 'Swipe/Pan';
+    });
+  }
+
+  void _showLocationHelp() {
+    showCupertinoDialog(
+      context: context,
+      builder:
+          (context) => CupertinoAlertDialog(
+            title: const Text('Location Help'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Current status: '),
+                Text(
+                  _locationStatus,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Troubleshooting:\n'
+                  '• Enable location services in Settings\n'
+                  '• Grant location permission to this app\n'
+                  '• Check if you\'re in an area with GPS signal\n'
+                  '• Try refreshing location again',
+                ),
+              ],
+            ),
+            actions: [
+              CupertinoDialogAction(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _accelerometerSubscription.cancel();
+    _gyroscopeSubscription.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return CupertinoPageScaffold(
+      navigationBar: const CupertinoNavigationBar(
+        middle: Text('Sensor & Gesture Demo'),
+      ),
+      child: SafeArea(
+        child: GestureDetector(
+          onTap: _handleTap,
+          onLongPress: _handleLongPress,
+          onPanStart: _handlePanStart,
+          onPanUpdate: _handlePanUpdate,
+          onPanEnd: _handlePanEnd,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildSectionCard('Device Sensors', [
+                  _buildSensorRow('Accelerometer X', _accelerometerX, 'm/s²'),
+                  _buildSensorRow('Accelerometer Y', _accelerometerY, 'm/s²'),
+                  _buildSensorRow('Accelerometer Z', _accelerometerZ, 'm/s²'),
+                  const SizedBox(height: 8),
+                  _buildSensorRow('Gyroscope X', _gyroscopeX, 'rad/s'),
+                  _buildSensorRow('Gyroscope Y', _gyroscopeY, 'rad/s'),
+                  _buildSensorRow('Gyroscope Z', _gyroscopeZ, 'rad/s'),
+                ]),
+
+                const SizedBox(height: 16),
+
+                _buildSectionCard('Location Services', [
+                  _buildInfoRow('Status', _locationStatus),
+                  if (_position != null) ...[
+                    _buildInfoRow(
+                      'Latitude',
+                      _position!.latitude.toStringAsFixed(6),
+                    ),
+                    _buildInfoRow(
+                      'Longitude',
+                      _position!.longitude.toStringAsFixed(6),
+                    ),
+                    _buildInfoRow(
+                      'Altitude',
+                      '${_position!.altitude.toStringAsFixed(2)} m',
+                    ),
+                    _buildInfoRow(
+                      'Accuracy',
+                      '${_position!.accuracy.toStringAsFixed(2)} m',
+                    ),
+                    _buildInfoRow(
+                      'Speed',
+                      '${_position!.speed.toStringAsFixed(2)} m/s',
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: CupertinoButton.filled(
+                      onPressed: _getCurrentLocation,
+                      child: const Text('Refresh Location'),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: CupertinoButton(
+                      onPressed: _showLocationHelp,
+                      child: const Text('Location Help'),
+                    ),
+                  ),
+                ]),
+
+                const SizedBox(height: 16),
+
+                _buildSectionCard('Gesture Recognition', [
+                  const Text(
+                    'Try different gestures on this screen:',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: CupertinoColors.systemBlue,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  _buildInfoRow('Last Gesture', _lastGesture),
+                  _buildInfoRow('Tap Count', _tapCount.toString()),
+                  _buildInfoRow('Long Press Count', _longPressCount.toString()),
+                  _buildInfoRow('Swipe Count', _swipeCount.toString()),
+                  _buildInfoRow(
+                    'Total Pan Distance',
+                    '${_totalPanDistance.toStringAsFixed(2)} px',
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: CupertinoButton(
+                      onPressed: () {
+                        setState(() {
+                          _tapCount = 0;
+                          _longPressCount = 0;
+                          _swipeCount = 0;
+                          _totalPanDistance = 0.0;
+                          _lastGesture = 'None';
+                        });
+                      },
+                      child: const Text('Reset Gesture Counters'),
+                    ),
+                  ),
+                ]),
+
+                const SizedBox(height: 16),
+
+                // Instructions Section
+                _buildSectionCard('Instructions', [
+                  const Text(
+                    '• Tap anywhere to increase tap count\n'
+                    '• Long press to increase long press count\n'
+                    '• Swipe or drag to increase swipe count\n'
+                    '• Shake the device to trigger shake detection\n'
+                    '• Move the device to see accelerometer changes\n'
+                    '• Rotate the device to see gyroscope changes',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: CupertinoColors.systemGrey,
+                    ),
+                  ),
+                ]),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionCard(String title, List<Widget> children) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: CupertinoColors.systemGroupedBackground,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: CupertinoColors.label,
+            ),
+          ),
+          const SizedBox(height: 12),
+          ...children,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSensorRow(String label, double value, String unit) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 14)),
+          Text(
+            '${value.toStringAsFixed(3)} $unit',
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: CupertinoColors.activeBlue,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 14)),
+          Flexible(
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: CupertinoColors.activeBlue,
+              ),
+              textAlign: TextAlign.right,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

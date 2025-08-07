@@ -49,5 +49,9 @@
 	<string>This app needs access to camera to take photos of recyclable items.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>This app needs access to photo library to select images of recyclable items.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>This app uses location to provide local recycling information.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>This app uses location to provide local recycling information.</string>
 </dict>
 </plist>
