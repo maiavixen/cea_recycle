@@ -19,10 +19,6 @@ void main() {
       await tester.pump();
       expect(find.byType(PhotoCaptureScreen), findsOneWidget);
 
-      await tester.tap(find.text('Sensors'));
-      await tester.pump();
-      expect(find.byType(SensorScreen), findsOneWidget);
-
       await tester.tap(find.text('Districts'));
       await tester.pump();
       expect(find.byType(DistrictListScreen), findsOneWidget);

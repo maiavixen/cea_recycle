@@ -66,17 +66,6 @@ void main() {
       expect(find.text('Photo Query'), findsOneWidget);
       expect(find.text('Take Photo'), findsOneWidget);
     });
-
-    testWidgets('Sensors tab navigation works', (WidgetTester tester) async {
-      await tester.pumpWidget(const MyApp());
-
-      await tester.tap(find.text('Sensors'));
-      await tester.pump();
-
-      expect(find.byType(SensorScreen), findsOneWidget);
-      expect(find.text('Sensor & Gesture Demo'), findsOneWidget);
-    });
-
     testWidgets('Sensor screen displays sensor data sections', (
       WidgetTester tester,
     ) async {
