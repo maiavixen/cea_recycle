@@ -117,7 +117,6 @@ class _DistrictListScreenState extends State<DistrictListScreen> {
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   List<DistrictRecycling> _filteredDistricts = recyclingData;
-  Position? _currentPosition;
   String _locationStatus = 'Getting your location...';
   String? _nearestDistrict;
   late StreamSubscription<AccelerometerEvent> _accelerometerSubscription;
@@ -132,7 +131,7 @@ class _DistrictListScreenState extends State<DistrictListScreen> {
   }
 
   void _initializeShakeDetection() {
-    _accelerometerSubscription = accelerometerEvents.listen((
+    _accelerometerSubscription = accelerometerEventStream().listen((
       AccelerometerEvent event,
     ) {
       double magnitude = sqrt(
@@ -200,12 +199,13 @@ class _DistrictListScreenState extends State<DistrictListScreen> {
       }
 
       Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-        timeLimit: const Duration(seconds: 10),
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 10),
+        ),
       );
 
       setState(() {
-        _currentPosition = position;
         _locationStatus = 'Location found';
         _nearestDistrict = _findNearestFictionalDistrict(position);
       });
@@ -244,6 +244,7 @@ class _DistrictListScreenState extends State<DistrictListScreen> {
     _searchController.removeListener(_onSearchChanged);
     _searchController.dispose();
     _searchFocusNode.dispose();
+    _accelerometerSubscription.cancel();
     super.dispose();
   }
 
